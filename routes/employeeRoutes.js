@@ -1,13 +1,20 @@
+
 const express = require("express");
 const mongoose = require("mongoose");
 const Employee = require("../models/Employee");
+const authenticateToken = require("../middleware/auth");
 
 const router = express.Router();
 
+const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
 // GET /api/v1/emp/employees
-router.get("/employees", async (req, res) => {
+// Return only employees owned by the authenticated user.
+router.get("/employees", authenticateToken, async (req, res) => {
   try {
-    const employees = await Employee.find().sort({ createdAt: -1 });
+    const employees = await Employee.find({
+      owner: req.user.userId
+    }).sort({ createdAt: -1 });
 
     return res.status(200).json({
       message: "Employees retrieved successfully",
@@ -15,7 +22,6 @@ router.get("/employees", async (req, res) => {
     });
   } catch (error) {
     console.error("Get employees error:", error.message);
-
     return res.status(500).json({
       message: "Internal server error"
     });
@@ -23,7 +29,7 @@ router.get("/employees", async (req, res) => {
 });
 
 // GET /api/v1/emp/employees/:eid
-router.get("/employees/:eid", async (req, res) => {
+router.get("/employees/:eid", authenticateToken, async (req, res) => {
   try {
     const { eid } = req.params;
 
@@ -33,7 +39,10 @@ router.get("/employees/:eid", async (req, res) => {
       });
     }
 
-    const employee = await Employee.findById(eid);
+    const employee = await Employee.findOne({
+      _id: eid,
+      owner: req.user.userId
+    });
 
     if (!employee) {
       return res.status(404).json({
@@ -47,17 +56,14 @@ router.get("/employees/:eid", async (req, res) => {
     });
   } catch (error) {
     console.error("Get employee error:", error.message);
-
     return res.status(500).json({
       message: "Internal server error"
     });
   }
 });
 
-const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-
 // POST /api/v1/emp/employees
-router.post("/employees", async (req, res) => {
+router.post("/employees", authenticateToken, async (req, res) => {
   try {
     const {
       first_name,
@@ -85,14 +91,19 @@ router.post("/employees", async (req, res) => {
       });
     }
 
-    if (!EMAIL_REGEX.test(email.trim())) {
+    if (
+      typeof email !== "string" ||
+      !EMAIL_REGEX.test(email.trim())
+    ) {
       return res.status(400).json({
         message: "Please provide a valid email address"
       });
     }
 
     const normalizedGender =
-      gender.charAt(0).toUpperCase() + gender.slice(1).toLowerCase();
+      typeof gender === "string"
+        ? gender.charAt(0).toUpperCase() + gender.slice(1).toLowerCase()
+        : "";
 
     if (!["Male", "Female", "Other"].includes(normalizedGender)) {
       return res.status(400).json({
@@ -108,8 +119,11 @@ router.post("/employees", async (req, res) => {
       });
     }
 
+    const normalizedEmail = email.trim().toLowerCase();
+
+    // Employee email is globally unique in the current schema.
     const existingEmployee = await Employee.findOne({
-      email: email.trim().toLowerCase()
+      email: normalizedEmail
     });
 
     if (existingEmployee) {
@@ -121,11 +135,12 @@ router.post("/employees", async (req, res) => {
     const employee = await Employee.create({
       first_name,
       last_name,
-      email,
+      email: normalizedEmail,
       gender: normalizedGender,
       designation,
       department,
-      salary: numericSalary
+      salary: numericSalary,
+      owner: req.user.userId
     });
 
     return res.status(201).json({
@@ -146,16 +161,14 @@ router.post("/employees", async (req, res) => {
     }
 
     console.error("Create employee error:", error.message);
-
     return res.status(500).json({
       message: "Internal server error"
     });
   }
 });
 
-
-/* PUT /api/v1/emp/employees/:eid */
-router.put("/employees/:eid", async (req, res) => {
+// PUT /api/v1/emp/employees/:eid
+router.put("/employees/:eid", authenticateToken, async (req, res) => {
   try {
     const { eid } = req.params;
 
@@ -192,7 +205,7 @@ router.put("/employees/:eid", async (req, res) => {
     if (updates.email !== undefined) {
       if (
         typeof updates.email !== "string" ||
-        !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(updates.email.trim())
+        !EMAIL_REGEX.test(updates.email.trim())
       ) {
         return res.status(400).json({
           message: "Please provide a valid email address"
@@ -247,8 +260,12 @@ router.put("/employees/:eid", async (req, res) => {
       updates.salary = salary;
     }
 
-    const employee = await Employee.findByIdAndUpdate(
-      eid,
+    // Only update an employee owned by this user.
+    const employee = await Employee.findOneAndUpdate(
+      {
+        _id: eid,
+        owner: req.user.userId
+      },
       { $set: updates },
       {
         new: true,
@@ -280,16 +297,14 @@ router.put("/employees/:eid", async (req, res) => {
     }
 
     console.error("Update employee error:", error.message);
-
     return res.status(500).json({
       message: "Internal server error"
     });
   }
 });
 
-
-/* DELETE /api/v1/emp/employees?eid=xxx */
-router.delete("/employees", async (req, res) => {
+// DELETE /api/v1/emp/employees?eid=xxx
+router.delete("/employees", authenticateToken, async (req, res) => {
   try {
     const { eid } = req.query;
 
@@ -305,7 +320,11 @@ router.delete("/employees", async (req, res) => {
       });
     }
 
-    const employee = await Employee.findByIdAndDelete(eid);
+    // Only delete an employee owned by this user.
+    const employee = await Employee.findOneAndDelete({
+      _id: eid,
+      owner: req.user.userId
+    });
 
     if (!employee) {
       return res.status(404).json({
@@ -319,7 +338,6 @@ router.delete("/employees", async (req, res) => {
     });
   } catch (error) {
     console.error("Delete employee error:", error.message);
-
     return res.status(500).json({
       message: "Internal server error"
     });

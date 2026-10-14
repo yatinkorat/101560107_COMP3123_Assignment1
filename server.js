@@ -1,7 +1,8 @@
-
 require("dotenv").config();
 
 const express = require("express");
+const helmet = require("helmet");
+const rateLimit = require("express-rate-limit");
 const mongoose = require("mongoose");
 const userRoutes = require("./routes/userRoutes");
 const employeeRoutes = require("./routes/employeeRoutes");
@@ -9,7 +10,21 @@ const employeeRoutes = require("./routes/employeeRoutes");
 const app = express();
 const PORT = process.env.PORT || 3000;
 
+app.use(helmet());
+
 app.use(express.json());
+
+const apiLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  limit: 100,
+  standardHeaders: "draft-8",
+  legacyHeaders: false,
+  message: {
+    message: "Too many requests. Please try again later."
+  }
+});
+
+app.use("/api/", apiLimiter);
 
 app.get("/", (req, res) => {
   res.status(200).json({
@@ -51,6 +66,15 @@ app.use(async (req, res, next) => {
 
 app.use("/api/v1/user", userRoutes);
 app.use("/api/v1/emp", employeeRoutes);
+
+app.get("/health", (req, res) => {
+  const databaseConnected = mongoose.connection.readyState === 1;
+
+  res.status(databaseConnected ? 200 : 503).json({
+    status: databaseConnected ? "healthy" : "unhealthy",
+    database: databaseConnected ? "connected" : "disconnected"
+  });
+});
 
 // Local development server
 if (require.main === module) {

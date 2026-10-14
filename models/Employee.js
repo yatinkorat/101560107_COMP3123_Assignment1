@@ -41,6 +41,10 @@ const employeeSchema = new mongoose.Schema(
       type: Number,
       required: [true, "Salary is required"],
       min: [0, "Salary cannot be negative"]
+    },
+    owner: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "User"
     }
   },
   {
