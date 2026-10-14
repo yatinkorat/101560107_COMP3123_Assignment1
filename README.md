@@ -97,3 +97,12 @@ Deployed API: https://comp-3123-assignment1.vercel.app
 - Never commit the real `.env` file or expose database credentials and JWT secrets.
 - Do not include `node_modules` in the submission ZIP.
 - Use non-sensitive test credentials when demonstrating the API.
+
+## Sample Credentials for Marking
+
+Use the following test account to test the deployed API:
+
+- Email: `ownership.userb01@example.com`
+- Password: `TestPass456!`
+
+Log in through `POST /api/v1/user/login` to obtain a JWT. Use the token as a Bearer token for employee endpoints.
